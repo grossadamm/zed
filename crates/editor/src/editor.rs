@@ -31,6 +31,7 @@ mod git;
 mod highlight_matching_bracket;
 pub mod hover_links;
 pub mod hover_popover;
+mod identifier_colorization;
 mod indent_guides;
 mod inlays;
 mod inline_input;
@@ -1230,6 +1231,9 @@ pub struct Editor {
     sticky_headers_task: Task<()>,
     sticky_headers: Option<Vec<OutlineItem<Anchor>>>,
     pub(crate) colorize_brackets_task: Task<()>,
+    colorized_identifier_chunks: HashMap<Range<text::Anchor>, HashSet<u32>>,
+    identifier_colors_stale: bool,
+    colorize_identifiers_task: Task<()>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -2616,6 +2620,9 @@ impl Editor {
             sticky_headers_task: Task::ready(()),
             sticky_headers: None,
             colorize_brackets_task: Task::ready(()),
+            colorized_identifier_chunks: HashMap::default(),
+            identifier_colors_stale: false,
+            colorize_identifiers_task: Task::ready(()),
         };
 
         if let Some(project) = editor.project.clone() {
@@ -10184,6 +10191,7 @@ impl Editor {
                 self.bracket_fetched_tree_sitter_chunks
                     .retain(|range, _| range.start.buffer_id != buffer_id);
                 self.colorize_brackets(false, cx);
+                self.colorize_identifiers(true, cx);
                 self.refresh_selected_text_highlights(&self.display_snapshot(cx), true, window, cx);
                 self.semantic_token_state.invalidate_buffer(&buffer_id);
                 cx.emit(EditorEvent::BufferRangesUpdated {
@@ -10236,6 +10244,7 @@ impl Editor {
                 self.refresh_runnables(Some(*buffer_id), window, cx);
                 self.refresh_selected_text_highlights(&self.display_snapshot(cx), true, window, cx);
                 self.colorize_brackets(true, cx);
+                self.colorize_identifiers(true, cx);
                 jsx_tag_auto_close::refresh_enabled_in_any_buffer(self, multibuffer, cx);
 
                 cx.emit(EditorEvent::Reparsed(*buffer_id));
@@ -10452,6 +10461,7 @@ impl Editor {
 
             if language_settings_changed || accents_changed {
                 self.colorize_brackets(true, cx);
+                self.colorize_identifiers(true, cx);
             }
 
             if language_settings_changed {
@@ -10521,6 +10531,7 @@ impl Editor {
         if new_accents != self.accent_data {
             self.accent_data = new_accents;
             self.colorize_brackets(true, cx);
+            self.colorize_identifiers(true, cx);
         }
 
         self.invalidate_semantic_tokens(None);
@@ -11763,6 +11774,7 @@ impl Editor {
     fn do_update_data_on_scroll(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
         self.register_visible_buffers(cx);
         self.colorize_brackets(false, cx);
+        self.colorize_identifiers(false, cx);
         self.refresh_inlay_hints(InlayHintRefreshReason::NewLinesShown, cx);
         self.resolve_visible_code_lenses(cx);
 

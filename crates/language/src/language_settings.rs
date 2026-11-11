@@ -11,7 +11,7 @@ use ec4rs::{
     },
 };
 use globset::{Glob, GlobMatcher, GlobSet, GlobSetBuilder};
-use gpui::{App, Modifiers, SharedString};
+use gpui::{App, Modifiers, Rgba, SharedString};
 use itertools::Itertools;
 use settings::{DelayMs, DocumentFoldingRanges, DocumentSymbols, IntoGpui, SemanticTokens};
 
@@ -183,6 +183,20 @@ pub struct LanguageSettings {
     pub word_diff_enabled: bool,
     /// Whether to use tree-sitter bracket queries to detect and colorize the brackets in the editor.
     pub colorize_brackets: bool,
+    /// How to color identifiers by their name.
+    pub colorize_identifiers: ColorizeIdentifiersSettings,
+}
+
+/// The settings for coloring identifiers by their name.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ColorizeIdentifiersSettings {
+    /// Whether to color identifiers by their name.
+    pub enabled: bool,
+    /// The colors of the gradient that identifier colors are picked from.
+    /// The accent colors of the theme are used when this is empty.
+    pub colors: Arc<[Rgba]>,
+    /// Whether to also color names that are built into the language.
+    pub color_builtins: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -837,6 +851,7 @@ impl settings::Settings for AllLanguageSettings {
             let indent_guides = settings.indent_guides.unwrap();
             let tasks = settings.tasks.unwrap();
             let whitespace_map = settings.whitespace_map.unwrap();
+            let colorize_identifiers = settings.colorize_identifiers.unwrap();
 
             LanguageSettings {
                 tab_size: settings.tab_size.unwrap(),
@@ -914,6 +929,11 @@ impl settings::Settings for AllLanguageSettings {
                 show_completions_on_input: settings.show_completions_on_input.unwrap(),
                 show_completion_documentation: settings.show_completion_documentation.unwrap(),
                 colorize_brackets: settings.colorize_brackets.unwrap(),
+                colorize_identifiers: ColorizeIdentifiersSettings {
+                    enabled: colorize_identifiers.enabled.unwrap(),
+                    colors: colorize_identifiers.colors.unwrap().into(),
+                    color_builtins: colorize_identifiers.color_builtins.unwrap(),
+                },
                 completions: CompletionSettings {
                     words: completions.words.unwrap(),
                     words_min_length: completions.words_min_length.unwrap() as usize,

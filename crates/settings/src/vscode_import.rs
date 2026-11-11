@@ -489,6 +489,7 @@ impl VsCodeSettings {
                                         None
                                     },
                                     foreground_color: foreground,
+                                    color_by_name: vec![],
                                     background_color: background,
                                     font_weight,
                                     font_style,
@@ -628,6 +629,7 @@ impl VsCodeSettings {
             remove_trailing_whitespace_on_save: self.read_bool("editor.trimAutoWhitespace"),
             show_completion_documentation: None,
             colorize_brackets: self.read_bool("editor.bracketPairColorization.enabled"),
+            colorize_identifiers: None,
             show_completions_on_input: self.read_bool("editor.suggestOnTriggerCharacters"),
             show_edit_predictions: self.read_bool("editor.inlineSuggest.enabled"),
             show_whitespaces: self.read_enum("editor.renderWhitespace", |s| {

@@ -426,6 +426,8 @@ TBD: Centered layout related settings
   "completion_menu_item_kind": "off", // off, symbol
   // Turn on colorization of brackets in editors (configurable per language)
   "colorize_brackets": true,
+  // Color identifiers by their name in editors (configurable per language)
+  "colorize_identifiers": { "enabled": true },
 ```
 
 ### Edit Predictions {#editor-ai}

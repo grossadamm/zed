@@ -1,6 +1,7 @@
 use std::{borrow::Cow, num::NonZeroU32};
 
 use collections::{HashMap, HashSet};
+use gpui::Rgba;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use settings_macros::{MergeFrom, with_fallible_options};
@@ -826,6 +827,31 @@ pub struct LanguageSettingsContent {
     ///
     /// Default: false
     pub colorize_brackets: Option<bool>,
+    /// Colors identifiers by their name, using tree-sitter syntax highlighting.
+    pub colorize_identifiers: Option<ColorizeIdentifiersSettingsContent>,
+}
+
+/// The settings for coloring identifiers by their name.
+#[with_fallible_options]
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, MergeFrom)]
+pub struct ColorizeIdentifiersSettingsContent {
+    /// Whether to color identifiers by their name.
+    ///
+    /// Default: false
+    pub enabled: Option<bool>,
+    /// The colors of the gradient that identifier colors are picked from.
+    /// The name of each identifier is hashed to a position on the gradient,
+    /// so the same name always gets the same color.
+    /// When empty, the accent colors of the theme are used.
+    ///
+    /// Default: []
+    pub colors: Option<Vec<Rgba>>,
+    /// Whether to also color names that are built into the language, such as
+    /// `self`, `this`, and the names a language server reports as part of
+    /// the standard library.
+    ///
+    /// Default: false
+    pub color_builtins: Option<bool>,
 }
 
 /// Controls how whitespace should be displayedin the editor.

@@ -51,6 +51,7 @@ You can customize a wide range of settings for each language, including:
 - [`show_completions_on_input`](./reference/all-settings.md#show-completions-on-input): Whether or not to show completions as you type
 - [`show_completion_documentation`](./reference/all-settings.md#show-completion-documentation): Whether to display inline and alongside documentation for items in the completions menu
 - [`colorize_brackets`](./reference/all-settings.md#colorize-brackets): Whether to use tree-sitter bracket queries to detect and colorize the brackets in the editor (also known as "rainbow brackets")
+- [`colorize_identifiers`](./reference/all-settings.md#colorize-identifiers): Colors identifiers by their name, so that the same name has the same color everywhere
 
 These settings allow you to maintain specific coding styles across different languages and projects.
 

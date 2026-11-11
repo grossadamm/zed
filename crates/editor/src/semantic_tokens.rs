@@ -3,7 +3,8 @@ use std::{collections::hash_map, sync::Arc, time::Duration};
 use collections::{HashMap, HashSet};
 use futures::future::join_all;
 use gpui::{
-    App, Context, FontStyle, FontWeight, HighlightStyle, StrikethroughStyle, Task, UnderlineStyle,
+    App, Context, FontStyle, FontWeight, HighlightStyle, Rgba, StrikethroughStyle, Task,
+    UnderlineStyle,
 };
 use itertools::Itertools;
 use language::{LanguageName, LanguageRegistry, language_settings::LanguageSettings};
@@ -120,13 +121,18 @@ impl Editor {
     ) {
         if !self.lsp_data_enabled() || !self.semantic_token_state.enabled() {
             self.invalidate_semantic_tokens(None);
-            self.display_map.update(cx, |display_map, _| {
+            let had_semantic_tokens = self.display_map.update(cx, |display_map, _| {
+                let had_semantic_tokens = !display_map.semantic_token_highlights.is_empty();
                 match Arc::get_mut(&mut display_map.semantic_token_highlights) {
                     Some(highlights) => highlights.clear(),
                     None => display_map.semantic_token_highlights = Arc::new(Default::default()),
                 };
+                had_semantic_tokens
             });
             self.semantic_token_state.update_task = Task::ready(());
+            if had_semantic_tokens {
+                self.recolorize_identifiers_after_semantic_tokens_change(cx);
+            }
             cx.notify();
             return;
         }
@@ -168,7 +174,7 @@ impl Editor {
             })
             .collect::<HashMap<_, _>>();
 
-        for buffer_with_disabled_tokens in self
+        let buffers_with_disabled_tokens = self
             .display_map
             .read(cx)
             .semantic_token_highlights
@@ -187,13 +193,16 @@ impl Editor {
                             .enabled()
                     })
             })
-            .collect::<Vec<_>>()
-        {
+            .collect::<Vec<_>>();
+        for buffer_with_disabled_tokens in &buffers_with_disabled_tokens {
             self.semantic_token_state
-                .invalidate_buffer(&buffer_with_disabled_tokens);
+                .invalidate_buffer(buffer_with_disabled_tokens);
             self.display_map.update(cx, |display_map, _| {
-                display_map.invalidate_semantic_highlights(buffer_with_disabled_tokens);
+                display_map.invalidate_semantic_highlights(*buffer_with_disabled_tokens);
             });
+        }
+        if !buffers_with_disabled_tokens.is_empty() {
+            self.recolorize_identifiers_after_semantic_tokens_change(cx);
         }
 
         self.semantic_token_state.update_task = cx.spawn(async move |editor, cx| {
@@ -230,6 +239,8 @@ impl Editor {
             let all_semantic_tokens = join_all(all_semantic_tokens_task).await;
             editor
                 .update(cx, |editor, cx| {
+                    let mut semantic_tokens_changed =
+                        !invalidate_semantic_highlights_for_buffers.is_empty();
                     editor.display_map.update(cx, |display_map, _| {
                         for buffer_id in invalidate_semantic_highlights_for_buffers {
                             display_map.invalidate_semantic_highlights(buffer_id);
@@ -238,6 +249,9 @@ impl Editor {
                     });
 
                     if all_semantic_tokens.is_empty() {
+                        if semantic_tokens_changed {
+                            editor.recolorize_identifiers_after_semantic_tokens_change(cx);
+                        }
                         return;
                     }
                     let multi_buffer_snapshot = editor.buffer().read(cx).snapshot(cx);
@@ -251,6 +265,7 @@ impl Editor {
                                 editor.display_map.update(cx, |display_map, _| {
                                     display_map.invalidate_semantic_highlights(buffer_id);
                                 });
+                                semantic_tokens_changed = true;
                                 continue;
                             }
                             Err(e) => {
@@ -297,6 +312,7 @@ impl Editor {
                                 &tokens,
                             )
                         };
+                        semantic_tokens_changed = true;
                         editor.display_map.update(cx, |display_map, cx| {
                             project.read(cx).lsp_store().update(cx, |lsp_store, cx| {
                                 let mut token_highlights = Vec::new();
@@ -335,6 +351,9 @@ impl Editor {
                         });
                     }
 
+                    if semantic_tokens_changed {
+                        editor.recolorize_identifiers_after_semantic_tokens_change(cx);
+                    }
                     cx.notify();
                 })
                 .ok();
@@ -395,7 +414,17 @@ fn buffer_into_editor_highlights<'a, 'b>(
         .zip(buffer_tokens)
         .filter_map(move |((multi_buffer_start, multi_buffer_end), token)| {
             let range = multi_buffer_start?..multi_buffer_end?;
-            let style = convert_token(stylizer, theme, token.token_type, token.token_modifiers)?;
+            let name_position = stylizer
+                .rules_for_token(token.token_type)
+                .is_some_and(|rules| rules.iter().any(|rule| !rule.color_by_name.is_empty()))
+                .then(|| name_color_position(multi_buffer_snapshot.text_for_range(range.clone())));
+            let style = convert_token(
+                stylizer,
+                theme,
+                token.token_type,
+                token.token_modifiers,
+                name_position,
+            )?;
             let style = interner.intern(style);
             Some(SemanticTokenHighlight {
                 range,
@@ -408,11 +437,57 @@ fn buffer_into_editor_highlights<'a, 'b>(
         })
 }
 
+/// Maps a token's text to a position in `0.0..=1.0` on a `color_by_name` gradient.
+///
+/// Uses FNV-1a instead of a `Hasher` so that a name keeps its color across
+/// runs, platforms, and dependency upgrades.
+pub(crate) fn name_color_position<'a>(text: impl Iterator<Item = &'a str>) -> f32 {
+    const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
+    const FNV_PRIME: u64 = 0x100000001b3;
+    // Every distinct color is a highlight style that is looked up whenever text is laid
+    // out, and neighboring positions of a finer division would not be told apart by eye.
+    const POSITIONS: u8 = 64;
+
+    let mut hash = FNV_OFFSET_BASIS;
+    for chunk in text {
+        for byte in chunk.bytes() {
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(FNV_PRIME);
+        }
+    }
+    // Folding all eight bytes is needed because no single byte of FNV-1a is well mixed
+    // for short names.
+    let folded_hash = hash
+        .to_le_bytes()
+        .into_iter()
+        .fold(0u8, |folded_hash, byte| folded_hash ^ byte);
+    let position = folded_hash / (u8::MAX / POSITIONS + 1);
+    f32::from(position) / f32::from(POSITIONS - 1)
+}
+
+pub(crate) fn color_at_position(colors: &[Rgba], position: f32) -> Option<Rgba> {
+    let last_index = colors.len().checked_sub(1)?;
+    let scaled_position = position * last_index as f32;
+    let lower_index = (scaled_position as usize).min(last_index);
+    let upper_index = (lower_index + 1).min(last_index);
+    let lower = colors.get(lower_index)?;
+    let upper = colors.get(upper_index)?;
+    let fraction = scaled_position - lower_index as f32;
+    let mix = |from: f32, to: f32| from + (to - from) * fraction;
+    Some(Rgba {
+        r: mix(lower.r, upper.r),
+        g: mix(lower.g, upper.g),
+        b: mix(lower.b, upper.b),
+        a: mix(lower.a, upper.a),
+    })
+}
+
 fn convert_token(
     stylizer: &SemanticTokenStylizer,
     theme: &SyntaxTheme,
     token_type: TokenType,
     modifiers: u32,
+    name_position: Option<f32>,
 ) -> Option<HighlightStyle> {
     let rules = stylizer.rules_for_token(token_type)?;
     let filter = |rule: &&SemanticTokenRule| {
@@ -452,6 +527,12 @@ fn convert_token(
             SemanticTokenRule::foreground_color,
             Into::into,
         );
+
+        if let Some(color) =
+            name_position.and_then(|position| color_at_position(&rule.color_by_name, position))
+        {
+            highlight.color = Some(color.into());
+        }
 
         overwrite!(
             highlight.background_color,
@@ -514,8 +595,8 @@ mod tests {
 
     use futures::StreamExt as _;
     use gpui::{
-        AppContext as _, Entity, Focusable as _, HighlightStyle, TestAppContext, UpdateGlobal as _,
-        VisualTestContext,
+        AppContext as _, Entity, Focusable as _, HighlightStyle, Hsla, TestAppContext,
+        UpdateGlobal as _, VisualTestContext,
     };
     use language::{
         Diagnostic, DiagnosticEntry, DiagnosticSet, Language, LanguageAwareStyling, LanguageConfig,
@@ -2897,6 +2978,145 @@ mod tests {
             "expected 'main' chunk to have both diagnostic and semantic styling: {:?}",
             chunks
         );
+    }
+
+    #[gpui::test]
+    async fn test_semantic_token_color_by_name_full(cx: &mut TestAppContext) {
+        assert_semantic_token_color_by_name(SemanticTokens::Full, cx).await;
+    }
+
+    #[gpui::test]
+    async fn test_semantic_token_color_by_name_combined(cx: &mut TestAppContext) {
+        assert_semantic_token_color_by_name(SemanticTokens::Combined, cx).await;
+    }
+
+    async fn assert_semantic_token_color_by_name(mode: SemanticTokens, cx: &mut TestAppContext) {
+        init_test(cx, |_| {});
+
+        update_test_language_settings(cx, &|language_settings| {
+            language_settings.languages.0.insert(
+                "Rust".into(),
+                LanguageSettingsContent {
+                    semantic_tokens: Some(mode),
+                    ..LanguageSettingsContent::default()
+                },
+            );
+        });
+
+        let mut cx = EditorLspTestContext::new_rust(
+            lsp::ServerCapabilities {
+                semantic_tokens_provider: Some(
+                    lsp::SemanticTokensServerCapabilities::SemanticTokensOptions(
+                        lsp::SemanticTokensOptions {
+                            legend: lsp::SemanticTokensLegend {
+                                token_types: vec!["function".into(), "variable".into()],
+                                token_modifiers: Vec::new(),
+                            },
+                            full: Some(lsp::SemanticTokensFullOptions::Delta { delta: None }),
+                            ..lsp::SemanticTokensOptions::default()
+                        },
+                    ),
+                ),
+                ..lsp::ServerCapabilities::default()
+            },
+            cx,
+        )
+        .await;
+
+        let mut full_request = cx
+            .set_request_handler::<lsp::request::SemanticTokensFullRequest, _, _>(
+                move |_, _, _| async move {
+                    Ok(Some(lsp::SemanticTokensResult::Tokens(
+                        lsp::SemanticTokens {
+                            data: vec![
+                                0, 3, 4, 0, 0, // main: function
+                                0, 9, 3, 1, 0, // foo: variable
+                                0, 5, 3, 1, 0, // bar: variable
+                                0, 5, 3, 1, 0, // foo: variable
+                            ],
+                            result_id: None,
+                        },
+                    )))
+                },
+            );
+
+        cx.set_state("ˇfn main() { foo; bar; foo; }");
+        full_request.next().await;
+        cx.run_until_parked();
+        let initial_styles = extract_semantic_highlight_styles(&cx.editor, &cx);
+        assert_eq!(initial_styles.len(), 4);
+
+        let gradient = vec![gpui::rgb(0xff0000), gpui::rgb(0x0000ff)];
+        cx.update(|_, cx| {
+            SettingsStore::update_global(cx, |store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings.global_lsp_settings = Some(GlobalLspSettingsContent {
+                        semantic_token_rules: Some(SemanticTokenRules {
+                            rules: vec![SemanticTokenRule {
+                                token_type: Some("variable".to_string()),
+                                color_by_name: gradient.clone(),
+                                font_weight: Some(SemanticTokenFontWeight::Bold),
+                                ..SemanticTokenRule::default()
+                            }],
+                        }),
+                        ..GlobalLspSettingsContent::default()
+                    });
+                });
+            });
+        });
+
+        cx.set_state("ˇfn main() { foo; bar; foo;  }");
+        full_request.next().await;
+        cx.run_until_parked();
+
+        let styles = extract_semantic_highlight_styles(&cx.editor, &cx);
+        let [main, first_foo, bar, second_foo] = styles.as_slice() else {
+            panic!("expected four semantic token highlights, got {styles:?}");
+        };
+
+        assert_eq!(
+            Some(main),
+            initial_styles.first(),
+            "a token whose rules do not set color_by_name should be unchanged"
+        );
+        assert_eq!(
+            first_foo.color, second_foo.color,
+            "the same name should get the same color"
+        );
+        assert_ne!(
+            first_foo.color, bar.color,
+            "different names should get different colors"
+        );
+        // Pinned so that a change to the hash, which would recolor every user's code, fails here.
+        // The FNV-1a hash of "foo" folds to 134, which is position 33 of the 64 positions.
+        assert_eq!(
+            first_foo.color,
+            color_at_position(&gradient, 33.0 / 63.0).map(Hsla::from),
+            "the color of a name should be stable"
+        );
+        assert!(bar.color.is_some());
+        for style in [first_foo, bar, second_foo] {
+            assert_eq!(
+                style.font_weight,
+                Some(FontWeight::BOLD),
+                "the other style fields of the rule should still apply"
+            );
+        }
+
+        let painted_foo = cx.update_editor(|editor, window, cx| {
+            let syntax_theme = cx.theme().syntax().clone();
+            editor
+                .snapshot(window, cx)
+                .display_snapshot
+                .combined_highlights(MultiBufferOffset(12)..MultiBufferOffset(15), &syntax_theme)
+        });
+        assert!(!painted_foo.is_empty());
+        for (_, style) in painted_foo {
+            assert_eq!(
+                style.color, first_foo.color,
+                "the name color should win over tree-sitter highlighting"
+            );
+        }
     }
 
     fn extract_painted_semantic_styles(
