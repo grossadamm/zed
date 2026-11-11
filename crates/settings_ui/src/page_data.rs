@@ -10961,7 +10961,7 @@ fn language_settings_data() -> Box<[SettingsPageItem]> {
         ]
     }
 
-    fn miscellaneous_section() -> [SettingsPageItem; 8] {
+    fn miscellaneous_section() -> [SettingsPageItem; 10] {
         [
             SettingsPageItem::SectionHeader("Miscellaneous"),
             SettingsPageItem::SettingItem(SettingItem {
@@ -11073,6 +11073,56 @@ fn language_settings_data() -> Box<[SettingsPageItem]> {
                     write: |settings_content, value, _| {
                         language_settings_field_mut(settings_content, value, |language, value| {
                             language.colorize_brackets = value;
+                        })
+                    },
+                }),
+                metadata: None,
+                files: USER | PROJECT,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Colorize Identifiers",
+                description: "Whether to color identifiers by their name, so that the same name has the same color everywhere.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("languages.$(language).colorize_identifiers.enabled"),
+                    pick: |settings_content| {
+                        language_settings_field(settings_content, |language| {
+                            language.colorize_identifiers.as_ref().and_then(
+                                |colorize_identifiers| colorize_identifiers.enabled.as_ref(),
+                            )
+                        })
+                    },
+                    write: |settings_content, value, _| {
+                        language_settings_field_mut(settings_content, value, |language, value| {
+                            language
+                                .colorize_identifiers
+                                .get_or_insert_default()
+                                .enabled = value;
+                        })
+                    },
+                }),
+                metadata: None,
+                files: USER | PROJECT,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Colorize Built-in Identifiers",
+                description: "Whether identifier colorization also colors names that are built into the language.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("languages.$(language).colorize_identifiers.color_builtins"),
+                    pick: |settings_content| {
+                        language_settings_field(settings_content, |language| {
+                            language.colorize_identifiers.as_ref().and_then(
+                                |colorize_identifiers| colorize_identifiers.color_builtins.as_ref(),
+                            )
+                        })
+                    },
+                    write: |settings_content, value, _| {
+                        language_settings_field_mut(settings_content, value, |language, value| {
+                            language
+                                .colorize_identifiers
+                                .get_or_insert_default()
+                                .color_builtins = value;
                         })
                     },
                 }),

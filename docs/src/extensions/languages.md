@@ -627,6 +627,7 @@ Each rule in the `semantic_token_rules` array is defined as follows:
 - `token_modifiers`: A list of semantic token modifiers to match. All modifiers must be present to match.
 - `style`: A list of styles from the current syntax theme to use. The first style found is used. Any settings below override that style.
 - `foreground_color`: The foreground color to use for the token type, in hex format (e.g., `"#ff0000"`).
+- `color_by_name`: A list of colors in hex format that form a gradient. Each token gets a foreground color picked from the gradient by its text, so the same name always has the same color.
 - `background_color`: The background color to use for the token type, in hex format (e.g., `"#ff0000"`).
 - `underline`: A boolean or color to underline with, in hex format. If `true`, then the token will be underlined with the text color.
 - `strikethrough`: A boolean or color to strikethrough with, in hex format. If `true`, then the token will have a strikethrough with the text color.

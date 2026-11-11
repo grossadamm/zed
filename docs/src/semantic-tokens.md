@@ -60,6 +60,7 @@ Each rule can specify:
 | `token_modifiers`  | A list of modifiers that must all be present (e.g., `["declaration"]`, `["readonly", "static"]`).                  |
 | `style`            | A list of theme style names to try. The first one found in the current theme is used.                              |
 | `foreground_color` | Override foreground color in hex format (e.g., `"#ff0000"`).                                                       |
+| `color_by_name`    | A list of hex colors forming a gradient. Each token gets a color picked from the gradient by its text.             |
 | `background_color` | Override background color in hex format.                                                                           |
 | `underline`        | Boolean or hex color. If `true`, underlines with the text color.                                                   |
 | `strikethrough`    | Boolean or hex color. If `true`, strikes through with the text color.                                              |
@@ -122,6 +123,31 @@ Instead of hardcoding colors, reference styles from your theme:
 ```
 
 The first style found in the current theme is used, providing fallback options.
+
+### Example: Coloring Identifiers by Name
+
+To give every variable and parameter its own color, so that the same name has the same color everywhere, use `color_by_name`:
+
+```json [settings]
+{
+  "global_lsp_settings": {
+    "semantic_token_rules": [
+      {
+        "token_type": "variable",
+        "color_by_name": ["#7fb3ff", "#ffb380"]
+      },
+      {
+        "token_type": "parameter",
+        "color_by_name": ["#7fb3ff", "#ffb380"]
+      }
+    ]
+  }
+}
+```
+
+The text of each token is hashed to a position on the gradient that runs through the listed colors in order. A list with one color behaves like `foreground_color`. When a rule sets both, `color_by_name` takes precedence over `foreground_color` and over the color of `style`. The hash does not depend on the platform or the Zed version, and distinct names can share a color because the gradient has 64 steps.
+
+This works in both the `"combined"` and `"full"` modes, and requires a language server that provides semantic tokens. Language servers do not report every name: some send no tokens for the names in an `import` statement, for example. To color identifiers by name without a language server, use the [`colorize_identifiers`](./reference/all-settings.md#colorize-identifiers) setting instead. When both are set, the colors of `colorize_identifiers` take precedence over semantic token colors.
 
 ### Example: Disabling a Token Type
 

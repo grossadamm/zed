@@ -390,6 +390,14 @@
   // The colors that are used for different indentation levels are defined in the theme (theme key: `accents`).
   // They can be customized by using theme overrides.
   "colorize_brackets": false,
+  // Whether to color identifiers by their name, so that the same name always has the same color.
+  "colorize_identifiers": {
+    "enabled": false,
+    // The gradient that colors are picked from. When empty, the theme's accent colors are used.
+    "colors": [],
+    // Whether to also color names that are built into the language, such as `self` and `this`.
+    "color_builtins": false,
+  },
   // When to show the scrollbar in the completion menu.
   // This setting can take four values:
   //
@@ -2848,6 +2856,7 @@
     // - `style`: A list of styles from the current syntax theme to use. The first style found is used. Any
     //    settings below override that style.
     // - `foreground_color`: The foreground color to use for the token type, in hex format (e.g., "#ff0000").
+    // - `color_by_name`: A list of colors in hex format that form a gradient. Each token gets a foreground color picked from the gradient by its text.
     // - `background_color`: The background color to use for the token type, in hex format.
     // - `underline`: A boolean or color to underline with, in hex format. If `true`, then the token will be underlined with the text color.
     // - `strikethrough`: A boolean or color to strikethrough with, in hex format. If `true`, then the token have a strikethrough with the text color.
@@ -2863,6 +2872,14 @@
     //     "token_type": "unresolvedReference",
     //     "foreground_color": "#c93f3f",
     //     "font_weight": "bold"
+    //   }
+    // ]
+    //
+    // Example: Give each variable a color picked by its name from a gradient:
+    // "semantic_token_rules": [
+    //   {
+    //     "token_type": "variable",
+    //     "color_by_name": ["#7fb3ff", "#ffb380"]
     //   }
     // ]
     //

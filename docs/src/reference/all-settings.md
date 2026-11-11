@@ -2598,7 +2598,7 @@ While other options may be changed at a runtime and should be placed under `sett
 
 Each rule can match a `token_type` and a list of `token_modifiers` that must all be present.
 Matching rules merge their styling properties, with earlier rules taking precedence for each property they supply.
-Use `style` to list syntax-theme styles in preference order, and override them with `foreground_color`, `background_color`, `underline`, `strikethrough`, `font_weight`, or `font_style`.
+Use `style` to list syntax-theme styles in preference order, and override them with `foreground_color`, `color_by_name`, `background_color`, `underline`, `strikethrough`, `font_weight`, or `font_style`.
 Colors use hex strings; `underline` and `strikethrough` also accept booleans.
 Font weights are `"normal"` or `"bold"`, and font styles are `"normal"` or `"italic"`.
 
@@ -7436,6 +7436,58 @@ You can define these in user or project settings; project settings are merged on
 `boolean` values
 
 The colors that are used for different indentation levels are defined in the theme (theme key: `accents`). They can be customized by using theme overrides.
+
+## Colorize Identifiers
+
+- Description: Colors identifiers (variables, properties, functions, types, constants, attributes and namespaces) by their name, so that the same name has the same color everywhere. Uses tree-sitter syntax highlighting, so it needs no language server.
+- Setting: `colorize_identifiers`
+- Default:
+
+```json [settings]
+{
+  "colorize_identifiers": {
+    "enabled": false,
+    "colors": [],
+    "color_builtins": false
+  }
+}
+```
+
+**Options**
+
+1. `enabled`: whether to color identifiers by their name.
+2. `colors`: a list of hex colors that form a gradient. The name of each identifier is hashed to one of 64 positions on the gradient. When the list is empty, the accent colors of the theme are used (theme key: `accents`).
+3. `color_builtins`: whether to also color names that are built into the language. When `false`, names that the language's syntax highlighting marks as built in, such as `self` and `this`, keep their theme color. If [semantic tokens](../semantic-tokens.md) are enabled, the names a language server marks with the `defaultLibrary` modifier also keep their theme color once the server has reported them.
+
+**Example**
+
+To color identifiers with a custom gradient everywhere except in JSON files:
+
+```json [settings]
+{
+  "colorize_identifiers": {
+    "enabled": true,
+    "colors": [
+      "#e99696",
+      "#e9e996",
+      "#96e996",
+      "#96e9e9",
+      "#9696e9",
+      "#e996e9",
+      "#e99696"
+    ]
+  },
+  "languages": {
+    "JSON": {
+      "colorize_identifiers": {
+        "enabled": false
+      }
+    }
+  }
+}
+```
+
+Which names are colored follows each language's syntax highlighting queries, so the result differs between languages. Use `languages` to turn it off where it does not help. Identifier colors take precedence over the colors of semantic tokens. The hash is the one that the `color_by_name` [semantic token rule](../semantic-tokens.md#example-coloring-identifiers-by-name) uses, so both give a name the same color for the same list of colors.
 
 ## Unnecessary Code Fade
 

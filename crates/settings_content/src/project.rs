@@ -406,6 +406,11 @@ pub struct SemanticTokenRule {
     #[serde(default)]
     pub style: Vec<String>,
     pub foreground_color: Option<Rgba>,
+    /// Colors each token by its text instead of with a single foreground color.
+    /// The text is hashed to a position on the gradient through these colors,
+    /// so the same name always gets the same color.
+    #[serde(default)]
+    pub color_by_name: Vec<Rgba>,
     pub background_color: Option<Rgba>,
     pub underline: Option<SemanticTokenColorOverride>,
     pub strikethrough: Option<SemanticTokenColorOverride>,
@@ -417,6 +422,7 @@ impl SemanticTokenRule {
     pub fn no_style_defined(&self) -> bool {
         self.style.is_empty()
             && self.foreground_color.is_none()
+            && self.color_by_name.is_empty()
             && self.background_color.is_none()
             && self.underline.is_none()
             && self.strikethrough.is_none()
